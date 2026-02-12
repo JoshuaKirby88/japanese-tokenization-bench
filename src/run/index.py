@@ -45,4 +45,4 @@ class Runner:
 
 if __name__ == "__main__":
     runner = Runner()
-    runner.run(dataset_name="jcommonsenseqa", model="mistralai/ministral-3b-2512", n=1)
+    runner.run(dataset_name="JCommonsenseQA", model="mistralai/ministral-3b-2512", n=1)

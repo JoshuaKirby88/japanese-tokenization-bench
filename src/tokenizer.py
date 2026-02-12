@@ -30,6 +30,11 @@ class Tokenizer:
     def de_tokenize_morphology(self, string: str):
         return self.tagger.parse(string).strip()
 
+    def normalize(self, s: str, strategy: TokenizationStrategy):
+        if strategy == "baseline":
+            return s.strip()
+        return s.replace(" ", "").strip()
+
 
 if __name__ == "__main__":
     tokenizer = Tokenizer()

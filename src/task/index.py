@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from src.task.model import NIL_LABELS, Task, TaskConfig, TaskResult, TaskType
 from src.tokenizer import TOKENIZATION_STRATEGIES, Tokenizer
 
-_ = load_dotenv()
+load_dotenv()
 
 tokenizer = Tokenizer()
 
@@ -24,9 +24,11 @@ class TaskRunner:
                 Choices:
                 {"\n".join(task.options)}
             """),
-            evaluate=lambda task, strategy, response: (
-                response in task.options
-                and task.options.index(response) in task.ground_truths
+            evaluate=lambda task, strategy, response: any(
+                tokenizer.normalize(response, strategy)
+                == tokenizer.normalize(option, strategy)
+                and task.options.index(option) in task.ground_truths
+                for option in task.options
             ),
         ),
         "nli": TaskConfig(
@@ -40,9 +42,11 @@ class TaskRunner:
                 Choices:
                 {"\n".join(NIL_LABELS)}
             """),
-            evaluate=lambda task, strategy, response: (
-                response in NIL_LABELS
-                and NIL_LABELS.index(response) in task.ground_truths
+            evaluate=lambda task, strategy, response: any(
+                tokenizer.normalize(response, strategy)
+                == tokenizer.normalize(label, strategy)
+                and NIL_LABELS.index(label) in task.ground_truths
+                for label in NIL_LABELS
             ),
         ),
         "extraction": TaskConfig(
@@ -53,7 +57,27 @@ class TaskRunner:
                 Context: {tokenizer.tokenize(task.context or "", strategy)}
                 Question: {tokenizer.tokenize(task.question, strategy)}
             """),
-            evaluate=lambda task, strategy, response: response in task.ground_truths,
+            evaluate=lambda task, strategy, response: any(
+                tokenizer.normalize(str(gt), strategy)
+                == tokenizer.normalize(response, strategy)
+                for gt in task.ground_truths
+            ),
+        ),
+        "correction": TaskConfig(
+            get_system_prompt=lambda task, strategy: textwrap.dedent("""
+                Identify and correct typos in the "Context".
+                Return corrections in the format: "Typo -> Correction".
+                If multiple exist, list them one per line.
+                Return only the corrections.
+            """),
+            get_user_prompt=lambda task, strategy: textwrap.dedent(f"""
+                Context: {tokenizer.tokenize(task.context or "", strategy)}
+            """),
+            evaluate=lambda task, strategy, response: all(
+                tokenizer.normalize(str(gt), strategy)
+                in tokenizer.normalize(response, strategy)
+                for gt in task.ground_truths
+            ),
         ),
     }
 
