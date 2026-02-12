@@ -1,0 +1,9 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.14",
+  "stubPath": "typings",
+  "extraPaths": [
+    ".venv/lib/python3.14/site-packages"
+  ]
+}
