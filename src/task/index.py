@@ -79,6 +79,18 @@ class TaskRunner:
                 for gt in task.ground_truths
             ),
         ),
+        "char_counting": TaskConfig(
+            get_system_prompt=lambda task, strategy: (
+                'Count the number of "Character" in "Text". Answer with a single number only. Do not use markdown or extra formatting.'
+            ),
+            get_user_prompt=lambda task, strategy: (
+                f"Text: {tokenizer.tokenize(task.context or '', strategy)}\n"
+                + f"Character: {task.question}"
+            ),
+            evaluate=lambda task, strategy, response: any(
+                str(gt) == response.strip() for gt in task.ground_truths
+            ),
+        ),
     }
 
     def get_cost_from_response(self, res: GenerateTextResult) -> float:

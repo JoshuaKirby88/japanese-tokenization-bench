@@ -35,7 +35,11 @@ De-Tokenization will improve LLM's ability to perform fine-grained analysis on i
 
 **Models:**
 
-[undecided]
+- Big: GPT-5
+- Small: Gemma 3 4B
+- Chinese: GLM 4.7 Flash, Qwen 3
+- Japanese: Swallow (Llama-based), PLaMo, Japanese Stable LM
+- High Japanese Proficiency: Gemini 3 Flash, Gemini 2.5 Flash Lite
 
 **Dataset:**
 

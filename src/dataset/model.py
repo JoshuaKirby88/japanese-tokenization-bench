@@ -4,12 +4,13 @@ from typing import Generic, Literal, TypedDict, TypeVar
 
 from src.task.model import Task
 
-DatasetName = Literal["JCommonsenseQA", "JNLI", "JSQuAD", "JWTD"]
+DatasetName = Literal["JCommonsenseQA", "JNLI", "JSQuAD", "JWTD", "CharCount"]
 DATASET_NAMES: list[DatasetName] = [
     "JCommonsenseQA",
     "JNLI",
     "JSQuAD",
     "JWTD",
+    "CharCount",
 ]
 
 T = TypeVar("T")
@@ -20,7 +21,7 @@ class DatasetConfig(Generic[T]):
     path: str
     name: str
     transform: Callable[[T], Task]
-    prepare: Callable[[], None] | None = None
+    prepare: Callable[[], None] | None
 
 
 class JCommonsenseQA(TypedDict):
@@ -67,3 +68,10 @@ class WikipediaTypo(TypedDict):
     pre_text: str
     post_text: str
     diffs: list[WikipediaTypoDiff]
+
+
+class CharCount(TypedDict):
+    id: str
+    text: str
+    character: str
+    count: int

@@ -7,7 +7,7 @@ JWTD_URL = "https://nlp.ist.i.kyoto-u.ac.jp/nl-resource/JWTD/jwtd.tar.gz"
 DATA_DIR = Path("data/jwtd")
 
 
-def prepare_jwtd() -> None:
+def prepare_jwtd():
     target_file = DATA_DIR / "test.jsonl"
     alt_target_file = DATA_DIR / "jwtd" / "test.jsonl"
 

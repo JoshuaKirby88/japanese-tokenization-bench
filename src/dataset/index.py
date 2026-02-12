@@ -1,3 +1,4 @@
+import json
 import os
 from typing import Any, cast
 
@@ -5,9 +6,11 @@ from datasets.combine import concatenate_datasets
 from datasets.dataset_dict import DatasetDict
 from datasets.load import load_dataset
 
+from src.dataset.char_count import prepare_char_count
 from src.dataset.jwtd import prepare_jwtd
 from src.dataset.model import (
     JNLI,
+    CharCount,
     DatasetConfig,
     DatasetName,
     JCommonsenseQA,
@@ -32,6 +35,7 @@ class DatasetLoader:
                 options=[r[f"choice{i}"] for i in range(5)],
                 ground_truths=[r["label"]],
             ),
+            prepare=None,
         ),
         "JNLI": DatasetConfig[JNLI](
             path="shunk031/JGLUE",
@@ -44,6 +48,7 @@ class DatasetLoader:
                 options=[],
                 ground_truths=[r["label"]],
             ),
+            prepare=None,
         ),
         "JSQuAD": DatasetConfig[JSQuADT](
             path="shunk031/JGLUE",
@@ -56,6 +61,7 @@ class DatasetLoader:
                 options=[],
                 ground_truths=r["answers"]["text"],
             ),
+            prepare=None,
         ),
         "JWTD": DatasetConfig[WikipediaTypo](
             path="json",
@@ -70,6 +76,19 @@ class DatasetLoader:
                 ground_truths=[f"{d['pre']} -> {d['post']}" for d in r["diffs"]],
             ),
         ),
+        "CharCount": DatasetConfig[CharCount](
+            path="json",
+            name="data/char_count/test.jsonl",
+            prepare=prepare_char_count,
+            transform=lambda r: Task(
+                id=r["id"],
+                type="char_counting",
+                context=r["text"],
+                question=r["character"],
+                options=[],
+                ground_truths=[r["count"]],
+            ),
+        ),
     }
 
     def load_raw(self, dataset_name: DatasetName):
@@ -78,8 +97,8 @@ class DatasetLoader:
             config.prepare()
 
         if config.path == "json":
-            dataset = cast(DatasetDict, load_dataset("json", data_files=config.name))
-            return dataset["train"]
+            with open(config.name, "r", encoding="utf-8") as f:
+                return [json.loads(line) for line in f]
 
         dataset = cast(
             DatasetDict, load_dataset(config.path, config.name, trust_remote_code=True)
@@ -106,3 +125,6 @@ if __name__ == "__main__":
 
     print("\nWikipedia Typo:")
     print(loader.load_raw("JWTD")[0])
+
+    print("\nCharCount:")
+    print(loader.load_raw("CharCount")[0])
