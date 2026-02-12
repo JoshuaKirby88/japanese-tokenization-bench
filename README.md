@@ -35,10 +35,7 @@ De-Tokenization will improve LLM's ability to perform fine-grained analysis on i
 
 **Models:**
 
-- OpenAI: GPT-5.1
-- Google: Gemini 2.5 Flash Lite, Gemini 3
-- Chinese: Kimi K2.5,
-- Japanese: EvoLLM-JP-v1-7B
+[undecided]
 
 **Dataset:**
 
@@ -48,11 +45,6 @@ De-Tokenization will improve LLM's ability to perform fine-grained analysis on i
 - Synthetic Data (character counting): Count number of occurrences of "が" in "私は蝶が好きですが、蛾が嫌いです。"
 - Japanese Wikipedia Typo Dataset: Question="Identify all typos in ..." Answer="[Typo] -> [Correction]"
 - Grammar pattern extraction (from my other project with ~600 samples): Extract all "〜たり〜たり" from "..."
-
-## TODOs
-
-- [ ] Curate dataset of verifiable answers
-    - Consider LLM-as-a-judge datasets if appropriate
 
 ## Related Papers
 

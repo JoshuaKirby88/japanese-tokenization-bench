@@ -6,6 +6,8 @@ from src.tokenizer import TokenizationStrategy
 TaskType = Literal["multiple_choice", "nli", "extraction"]
 TASK_TYPES: list[TaskType] = ["multiple_choice", "nli", "extraction"]
 
+NIL_LABELS = ["Entailment", "Neutral", "Contradiction"]
+
 
 @dataclass
 class TaskConfig:
@@ -31,5 +33,7 @@ class TaskResult:
     task_id: str
     task_type: TaskType
     tokenization_strategy: TokenizationStrategy
+    user_prompt: str
     response: str
+    dollars: float
     evaluation: bool
