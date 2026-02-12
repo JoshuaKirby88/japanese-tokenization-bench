@@ -1,5 +1,3 @@
-import textwrap
-
 from ai_sdk import generate_text, openai
 from ai_sdk.generate_text import GenerateTextResult
 from dotenv import load_dotenv
@@ -15,15 +13,17 @@ tokenizer = Tokenizer()
 class TaskRunner:
     configs: dict[TaskType, TaskConfig] = {
         "multiple_choice": TaskConfig(
-            get_system_prompt=lambda task, strategy: textwrap.dedent("""
-                Answer with a single choice label only.
-            """),
-            get_user_prompt=lambda task, strategy: textwrap.dedent(f"""
-                Question: {tokenizer.tokenize(task.question, strategy)}
-
-                Choices:
-                {"\n".join(task.options)}
-            """),
+            get_system_prompt=lambda task, strategy: (
+                "Answer with a single choice label only."
+            ),
+            get_user_prompt=lambda task, strategy: (
+                f"Question: {tokenizer.tokenize(task.question, strategy)}\n"
+                + "\n"
+                + "Choices:\n"
+                + "\n".join(
+                    tokenizer.tokenize(option, strategy) for option in task.options
+                )
+            ),
             evaluate=lambda task, strategy, response: any(
                 tokenizer.normalize(response, strategy)
                 == tokenizer.normalize(option, strategy)
@@ -32,16 +32,16 @@ class TaskRunner:
             ),
         ),
         "nli": TaskConfig(
-            get_system_prompt=lambda task, strategy: textwrap.dedent("""
-                Answer with a single choice label only.
-            """),
-            get_user_prompt=lambda task, strategy: textwrap.dedent(f"""
-                Premise: {tokenizer.tokenize(task.context or "", strategy)}
-                Hypothesis: {tokenizer.tokenize(task.question, strategy)}
-
-                Choices:
-                {"\n".join(NIL_LABELS)}
-            """),
+            get_system_prompt=lambda task, strategy: (
+                "Answer with a single choice label only."
+            ),
+            get_user_prompt=lambda task, strategy: (
+                f"Premise: {tokenizer.tokenize(task.context or '', strategy)}\n"
+                + f"Hypothesis: {tokenizer.tokenize(task.question, strategy)}\n"
+                + "\n"
+                + "Choices:\n"
+                + "\n".join(tokenizer.tokenize(label, strategy) for label in NIL_LABELS)
+            ),
             evaluate=lambda task, strategy, response: any(
                 tokenizer.normalize(response, strategy)
                 == tokenizer.normalize(label, strategy)
@@ -50,13 +50,13 @@ class TaskRunner:
             ),
         ),
         "extraction": TaskConfig(
-            get_system_prompt=lambda task, strategy: textwrap.dedent("""
-                Extract the answer from the "Context", and return only the answer.
-            """),
-            get_user_prompt=lambda task, strategy: textwrap.dedent(f"""
-                Context: {tokenizer.tokenize(task.context or "", strategy)}
-                Question: {tokenizer.tokenize(task.question, strategy)}
-            """),
+            get_system_prompt=lambda task, strategy: (
+                'Extract the answer from the "Context", and return only the answer.'
+            ),
+            get_user_prompt=lambda task, strategy: (
+                f"Context: {tokenizer.tokenize(task.context or '', strategy)}\n"
+                + f"Question: {tokenizer.tokenize(task.question, strategy)}"
+            ),
             evaluate=lambda task, strategy, response: any(
                 tokenizer.normalize(str(gt), strategy)
                 == tokenizer.normalize(response, strategy)
@@ -64,15 +64,15 @@ class TaskRunner:
             ),
         ),
         "correction": TaskConfig(
-            get_system_prompt=lambda task, strategy: textwrap.dedent("""
-                Identify and correct typos in the "Context".
-                Return corrections in the format: "Typo -> Correction".
-                If multiple exist, list them one per line.
-                Return only the corrections.
-            """),
-            get_user_prompt=lambda task, strategy: textwrap.dedent(f"""
-                Context: {tokenizer.tokenize(task.context or "", strategy)}
-            """),
+            get_system_prompt=lambda task, strategy: (
+                'Identify and correct typos in "Text".\n'
+                + 'Return corrections in the format: "Typo -> Correction".\n'
+                + "If multiple exist, list them one per line.\n"
+                + "Return only the corrections."
+            ),
+            get_user_prompt=lambda task, strategy: (
+                f"Text: {tokenizer.tokenize(task.question, strategy)}"
+            ),
             evaluate=lambda task, strategy, response: all(
                 tokenizer.normalize(str(gt), strategy)
                 in tokenizer.normalize(response, strategy)
