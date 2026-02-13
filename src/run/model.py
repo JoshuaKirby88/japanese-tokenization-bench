@@ -12,14 +12,28 @@ class StrategySummary:
     delta: float | None = None
 
 
-RunResultSummary = dict[TokenizationStrategy, StrategySummary]
+ResultSummary = dict[TokenizationStrategy, StrategySummary]
 
 
 @dataclass
-class RunResult:
-    dataset: DatasetName
-    model: str
-    n: int
+class DatasetResult:
     dollars: float
-    summary: RunResultSummary
-    results: list[TaskResult]
+    summary: ResultSummary
+    strategy_results: list[dict[TokenizationStrategy, TaskResult]]
+
+
+@dataclass
+class ModelResut:
+    dollars: float
+    summary: ResultSummary
+    dataset_results: dict[DatasetName, DatasetResult]
+
+
+@dataclass
+class BatchResult:
+    models: list[str]
+    datasets: list[DatasetName]
+    strategies: list[TokenizationStrategy]
+    dollars: float
+    summary: ResultSummary
+    model_results: dict[str, ModelResut]

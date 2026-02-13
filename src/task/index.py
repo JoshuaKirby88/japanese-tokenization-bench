@@ -5,8 +5,14 @@ from ai_sdk import generate_text, openai
 from ai_sdk.generate_text import GenerateTextResult
 from dotenv import load_dotenv
 
-from src.task.model import NIL_LABELS, Task, TaskConfig, TaskResult, TaskType
-from src.tokenizer import TOKENIZATION_STRATEGIES, TokenizationStrategy, Tokenizer
+from src.task.model import (
+    NIL_LABELS,
+    Task,
+    TaskConfig,
+    TaskResult,
+    TaskType,
+)
+from src.tokenizer import TokenizationStrategy, Tokenizer
 
 load_dotenv()
 
@@ -14,18 +20,6 @@ tokenizer = Tokenizer()
 
 
 class TaskRunner:
-    @staticmethod
-    def compute_f1(prediction: str, ground_truth: str):
-        prediction_tokens = list(prediction)
-        ground_truth_tokens = list(ground_truth)
-        common = Counter(prediction_tokens) & Counter(ground_truth_tokens)
-        num_same = sum(common.values())
-        if num_same == 0:
-            return 0.0
-        precision = 1.0 * num_same / len(prediction_tokens)
-        recall = 1.0 * num_same / len(ground_truth_tokens)
-        return (2 * precision * recall) / (precision + recall)
-
     configs: dict[TaskType, TaskConfig] = {
         "multiple_choice": TaskConfig(
             get_system_prompt=lambda task, strategy: (
@@ -128,7 +122,19 @@ class TaskRunner:
         ),
     }
 
-    def get_cost_from_response(self, res: GenerateTextResult) -> float:
+    @staticmethod
+    def compute_f1(prediction: str, ground_truth: str):
+        prediction_tokens = list(prediction)
+        ground_truth_tokens = list(ground_truth)
+        common = Counter(prediction_tokens) & Counter(ground_truth_tokens)
+        num_same = sum(common.values())
+        if num_same == 0:
+            return 0.0
+        precision = 1.0 * num_same / len(prediction_tokens)
+        recall = 1.0 * num_same / len(ground_truth_tokens)
+        return (2 * precision * recall) / (precision + recall)
+
+    def get_cost_from_response(self, res: GenerateTextResult):
         dollars = 0.0
         if (
             res.raw_response
@@ -137,10 +143,13 @@ class TaskRunner:
         ):
             retrieved_cost = getattr(res.raw_response.usage, "cost", None)
             if retrieved_cost is not None:
-                dollars = retrieved_cost
+                try:
+                    dollars = float(retrieved_cost)
+                except (TypeError, ValueError):
+                    pass
         return dollars
 
-    def run_strategy(self, model: str, task: Task, strategy: TokenizationStrategy):
+    def run_strategy(self, model: str, strategy: TokenizationStrategy, task: Task):
         config = self.configs[task.type]
         user_prompt = config.get_user_prompt(task, strategy)
         res = generate_text(
@@ -160,13 +169,17 @@ class TaskRunner:
             ground_truths=task.ground_truths,
         )
 
-    def run(self, model: str, task: Task):
+    def run(self, model: str, strategies: list[TokenizationStrategy], task: Task):
         with ThreadPoolExecutor() as executor:
-            results = list(
+            task_results = list(
                 executor.map(
-                    lambda strategy: self.run_strategy(model, task, strategy),
-                    TOKENIZATION_STRATEGIES,
+                    lambda strategy: self.run_strategy(
+                        model=model, strategy=strategy, task=task
+                    ),
+                    strategies,
                 )
             )
-
-        return results
+        strategy_to_result: dict[TokenizationStrategy, TaskResult] = {
+            r.tokenization_strategy: r for r in task_results
+        }
+        return strategy_to_result
