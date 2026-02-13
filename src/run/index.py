@@ -1,5 +1,6 @@
 import datetime
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
 
@@ -7,7 +8,7 @@ from src.dataset.index import DatasetLoader
 from src.dataset.model import DatasetName
 from src.run.model import RunResult
 from src.task.index import TaskRunner
-from src.task.model import TaskResult
+from src.task.model import Task
 
 RESULT_DIR = Path("data/results")
 
@@ -17,14 +18,17 @@ class Runner:
     task_runner = TaskRunner()
 
     def run(self, dataset_name: DatasetName, model: str, n: int):
-        task_results: list[TaskResult] = []
-
+        tasks: list[Task] = []
         for i, task in enumerate(self.dataset_loader.load_tasks(dataset_name)):
             if i == n:
                 break
+            tasks.append(task)
 
-            results = self.task_runner.run(model=model, task=task)
-            task_results.extend(results)
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            all_results = list(
+                executor.map(lambda t: self.task_runner.run(model=model, task=t), tasks)
+            )
+        task_results = [r for rs in all_results for r in rs]
 
         run_result = RunResult(
             dataset=dataset_name,

@@ -1,11 +1,12 @@
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 
 from ai_sdk import generate_text, openai
 from ai_sdk.generate_text import GenerateTextResult
 from dotenv import load_dotenv
 
 from src.task.model import NIL_LABELS, Task, TaskConfig, TaskResult, TaskType
-from src.tokenizer import TOKENIZATION_STRATEGIES, Tokenizer
+from src.tokenizer import TOKENIZATION_STRATEGIES, TokenizationStrategy, Tokenizer
 
 load_dotenv()
 
@@ -58,7 +59,7 @@ class TaskRunner:
                 + f"Hypothesis: {tokenizer.tokenize(task.question, strategy)}\n"
                 + "\n"
                 + "Choices:\n"
-                + "\n".join(tokenizer.tokenize(label, strategy) for label in NIL_LABELS)
+                + "\n".join(label for label in NIL_LABELS)
             ),
             evaluate=lambda task, strategy, response: (
                 1.0
@@ -139,28 +140,33 @@ class TaskRunner:
                 dollars = retrieved_cost
         return dollars
 
+    def run_strategy(self, model: str, task: Task, strategy: TokenizationStrategy):
+        config = self.configs[task.type]
+        user_prompt = config.get_user_prompt(task, strategy)
+        res = generate_text(
+            model=openai(model),
+            system=config.get_system_prompt(task, strategy),
+            prompt=user_prompt,
+        )
+
+        return TaskResult(
+            task_id=task.id,
+            task_type=task.type,
+            tokenization_strategy=strategy,
+            user_prompt=user_prompt,
+            response=res.text,
+            dollars=self.get_cost_from_response(res),
+            evaluation=config.evaluate(task, strategy, res.text),
+            ground_truths=task.ground_truths,
+        )
+
     def run(self, model: str, task: Task):
-        results: list[TaskResult] = []
-
-        for strategy in TOKENIZATION_STRATEGIES:
-            config = self.configs[task.type]
-            user_prompt = config.get_user_prompt(task, strategy)
-            res = generate_text(
-                model=openai(model),
-                system=config.get_system_prompt(task, strategy),
-                prompt=user_prompt,
+        with ThreadPoolExecutor() as executor:
+            results = list(
+                executor.map(
+                    lambda strategy: self.run_strategy(model, task, strategy),
+                    TOKENIZATION_STRATEGIES,
+                )
             )
-
-            result = TaskResult(
-                task_id=task.id,
-                task_type=task.type,
-                tokenization_strategy=strategy,
-                user_prompt=user_prompt,
-                response=res.text,
-                dollars=self.get_cost_from_response(res),
-                evaluation=config.evaluate(task, strategy, res.text),
-                ground_truths=task.ground_truths,
-            )
-            results.append(result)
 
         return results

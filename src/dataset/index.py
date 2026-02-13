@@ -6,9 +6,11 @@ from datasets.combine import concatenate_datasets
 from datasets.dataset_dict import DatasetDict
 from datasets.load import load_dataset
 from datasets.utils.logging import set_verbosity_error
+from dotenv import load_dotenv
 
 from src.dataset.char_count import prepare_char_count
 
+load_dotenv()
 set_verbosity_error()
 from src.dataset.jwtd import prepare_jwtd
 from src.dataset.model import (

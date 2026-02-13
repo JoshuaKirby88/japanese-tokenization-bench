@@ -1,3 +1,4 @@
+import threading
 from typing import Literal
 
 from fugashi import Tagger
@@ -14,7 +15,13 @@ TOKENIZATION_STRATEGIES: list[TokenizationStrategy] = [
 
 class Tokenizer:
     def __init__(self):
-        self.tagger = Tagger("-Owakati")
+        self._local = threading.local()
+
+    @property
+    def tagger(self) -> Tagger:
+        if not hasattr(self._local, "tagger"):
+            self._local.tagger = Tagger("-Owakati")
+        return self._local.tagger
 
     def tokenize(self, string: str, strategy: TokenizationStrategy):
         if strategy == "baseline":

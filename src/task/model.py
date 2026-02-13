@@ -14,7 +14,7 @@ TASK_TYPES: list[TaskType] = [
     "char_counting",
 ]
 
-NIL_LABELS = ["Entailment", "Neutral", "Contradiction"]
+NIL_LABELS = ["Entailment", "Contradiction", "Neutral"]
 
 
 @dataclass
