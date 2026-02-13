@@ -36,3 +36,4 @@ class TaskResult:
     ground_truths: list[str] | list[int]
     dollars: float
     evaluation: float
+    reasoning: str | None

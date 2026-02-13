@@ -5,6 +5,7 @@ from ai_sdk import generate_text, openai
 from ai_sdk.generate_text import GenerateTextResult
 from dotenv import load_dotenv
 
+from src.run.model import Reasoning
 from src.task.model import NIL_LABELS, Task, TaskConfig, TaskResult, TaskType
 from src.tokenizer import TokenizationStrategy, Tokenizer
 
@@ -16,7 +17,9 @@ tokenizer = Tokenizer()
 class TaskRunner:
     configs: dict[TaskType, TaskConfig] = {
         "multiple_choice": TaskConfig(
-            get_system_prompt=lambda task, strategy: "Answer with a single choice label only. Do not use markdown or extra formatting.",
+            get_system_prompt=lambda task, strategy: (
+                "Answer with exactly one of the provided choices, and nothing else. Do not use markdown or extra formatting."
+            ),
             get_user_prompt=lambda task, strategy: (
                 f"Question: {tokenizer.tokenize(task.question, strategy)}\n"
                 + "\n"
@@ -34,7 +37,9 @@ class TaskRunner:
             ),
         ),
         "nli": TaskConfig(
-            get_system_prompt=lambda task, strategy: "Answer with a single choice label only. Do not use markdown or extra formatting.",
+            get_system_prompt=lambda task, strategy: (
+                "Answer with exactly one of the provided choices, and nothing else. Do not use markdown or extra formatting."
+            ),
             get_user_prompt=lambda task, strategy: (
                 f"Premise: {tokenizer.tokenize(task.context or '', strategy)}\n"
                 + f"Hypothesis: {tokenizer.tokenize(task.question, strategy)}\n"
@@ -108,10 +113,11 @@ class TaskRunner:
                     pass
         return dollars
 
-    def run_strategy(self, model: str, strategy: TokenizationStrategy, task: Task):
+    def run_strategy(self, model: str, strategy: TokenizationStrategy, task: Task, reasoning: Reasoning):
         config = self.configs[task.type]
         user_prompt = config.get_user_prompt(task, strategy)
-        res = generate_text(model=openai(model), system=config.get_system_prompt(task, strategy), prompt=user_prompt)
+
+        res = generate_text(model=openai(model), system=config.get_system_prompt(task, strategy), prompt=user_prompt, reasoning=reasoning)
 
         return TaskResult(
             task_id=task.id,
@@ -122,10 +128,16 @@ class TaskRunner:
             dollars=self.get_cost_from_response(res),
             evaluation=config.evaluate(task, strategy, res.text),
             ground_truths=task.ground_truths,
+            reasoning=res.reasoning,
         )
 
-    def run(self, model: str, strategies: list[TokenizationStrategy], task: Task):
+    def run(self, model: str, strategies: list[TokenizationStrategy], task: Task, reasoning: Reasoning):
         with ThreadPoolExecutor() as executor:
-            task_results = list(executor.map(lambda strategy: self.run_strategy(model=model, strategy=strategy, task=task), strategies))
+            task_results = list(
+                executor.map(
+                    lambda strategy: self.run_strategy(model=model, strategy=strategy, task=task, reasoning=reasoning),
+                    strategies,
+                )
+            )
         strategy_to_result: dict[TokenizationStrategy, TaskResult] = {r.tokenization_strategy: r for r in task_results}
         return strategy_to_result

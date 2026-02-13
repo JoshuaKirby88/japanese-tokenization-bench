@@ -1,8 +1,24 @@
 from dataclasses import dataclass
+from typing import Literal, override
 
 from src.dataset.model import DatasetName
 from src.task.model import TaskResult
 from src.tokenizer import TokenizationStrategy
+
+Reasoning = Literal["none", "low", "medium", "high", None]
+
+
+@dataclass()
+class ModelConfig:
+    model: str
+    reasoning: Reasoning = None
+
+    @override
+    def __str__(self) -> str:
+        parts: list[str] = [self.model]
+        if self.reasoning:
+            parts.append(self.reasoning)
+        return ":".join(parts)
 
 
 @dataclass
@@ -23,7 +39,7 @@ class DatasetResult:
 
 
 @dataclass
-class ModelResut:
+class ModelResult:
     dollars: float
     summary: ResultSummary
     dataset_results: dict[DatasetName, DatasetResult]
@@ -31,9 +47,9 @@ class ModelResut:
 
 @dataclass
 class BatchResult:
-    models: list[str]
+    model_config: list[ModelConfig]
     datasets: list[DatasetName]
     strategies: list[TokenizationStrategy]
     dollars: float
     summary: ResultSummary
-    model_results: dict[str, ModelResut]
+    model_results: dict[str, ModelResult]

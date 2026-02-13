@@ -6,7 +6,7 @@ from pathlib import Path
 
 from src.dataset.index import DatasetLoader
 from src.dataset.model import DATASET_NAMES, DatasetName
-from src.run.model import BatchResult, DatasetResult, ModelResut, ResultSummary, StrategySummary
+from src.run.model import BatchResult, DatasetResult, ModelConfig, ModelResult, ResultSummary, StrategySummary
 from src.task.index import TaskRunner
 from src.task.model import Task, TaskResult
 from src.tokenizer import TOKENIZATION_STRATEGIES, TokenizationStrategy
@@ -18,8 +18,8 @@ class Runner:
     dataset_loader = DatasetLoader()
     task_runner = TaskRunner()
 
-    def run(self, model: str, dataset_name: DatasetName, strategies: list[TokenizationStrategy], n: int):
-        print(f"Running {dataset_name} with {model} for n={n}...")
+    def run(self, model_config: ModelConfig, dataset_name: DatasetName, strategies: list[TokenizationStrategy], n: int):
+        print(f"Running {dataset_name} with {model_config} for n={n}...")
         tasks: list[Task] = []
         for i, task in enumerate(self.dataset_loader.load_tasks(dataset_name)):
             if i == n:
@@ -28,7 +28,10 @@ class Runner:
 
         with ThreadPoolExecutor(max_workers=5) as executor:
             strategy_to_result_list: list[dict[TokenizationStrategy, TaskResult]] = list(
-                executor.map(lambda t: self.task_runner.run(model=model, strategies=strategies, task=t), tasks)
+                executor.map(
+                    lambda t: self.task_runner.run(model=model_config.model, strategies=strategies, task=t, reasoning=model_config.reasoning),
+                    tasks,
+                )
             )
 
         return DatasetResult(
@@ -55,19 +58,19 @@ class Runner:
 
         return summary
 
-    def run_batch(self, models: list[str], dataset_names: list[DatasetName], strategies: list[TokenizationStrategy], n: int):
-        model_results: dict[str, ModelResut] = {}
+    def run_batch(self, model_configs: list[ModelConfig], dataset_names: list[DatasetName], strategies: list[TokenizationStrategy], n: int):
+        model_results: dict[str, ModelResult] = {}
 
-        for model in models:
+        for model_config in model_configs:
             dataset_results: dict[DatasetName, DatasetResult] = {}
             for dataset_name in dataset_names:
                 try:
-                    dataset_results[dataset_name] = self.run(model=model, dataset_name=dataset_name, strategies=strategies, n=n)
+                    dataset_results[dataset_name] = self.run(model_config=model_config, dataset_name=dataset_name, strategies=strategies, n=n)
                 except Exception as e:
-                    print(f"Error running {dataset_name} with {model}: {e}")
+                    print(f"Error running {dataset_name} with {model_config}: {e}")
 
             if dataset_results:
-                model_results[model] = ModelResut(
+                model_results[str(model_config)] = ModelResult(
                     dollars=sum(r.dollars for r in dataset_results.values()),
                     summary=self.aggregate_summaries(strategies=strategies, summaries=[r.summary for r in dataset_results.values()]),
                     dataset_results=dataset_results,
@@ -77,7 +80,7 @@ class Runner:
             return
 
         batch_result = BatchResult(
-            models=models,
+            model_config=model_configs,
             datasets=dataset_names,
             strategies=strategies,
             dollars=sum(m.dollars for m in model_results.values()),
@@ -109,4 +112,9 @@ class Runner:
 
 if __name__ == "__main__":
     runner = Runner()
-    runner.run_batch(strategies=TOKENIZATION_STRATEGIES, models=["mistralai/ministral-3b-2512"], dataset_names=DATASET_NAMES, n=10)
+    runner.run_batch(
+        strategies=TOKENIZATION_STRATEGIES,
+        model_configs=[ModelConfig(model="qwen/qwen3-8b", reasoning="low")],
+        dataset_names=DATASET_NAMES,
+        n=50,
+    )
