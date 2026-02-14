@@ -5,7 +5,8 @@ from src.dataset.model import DatasetName
 from src.task.model import TaskResult
 from src.tokenizer import TokenizationStrategy
 
-Reasoning = Literal["none", "low", "medium", "high", None]
+Reasoning = Literal[None, "none", "low", "medium", "high"]
+REASONINGS: list[Reasoning] = [None, "none", "low", "medium", "high"]
 
 
 @dataclass()
