@@ -17,10 +17,10 @@ tokenizer = Tokenizer()
 class TaskRunner:
     configs: dict[TaskType, TaskConfig] = {
         "multiple_choice": TaskConfig(
-            get_system_prompt=lambda task, strategy: (
+            get_instruction_prompt=lambda task, strategy: (
                 "Answer with exactly one of the provided choices, and nothing else. Do not use markdown or extra formatting."
             ),
-            get_user_prompt=lambda task, strategy: (
+            get_task_prompt=lambda task, strategy: (
                 f"Question: {tokenizer.tokenize(task.question, strategy)}\n"
                 + "\n"
                 + "Choices:\n"
@@ -37,10 +37,10 @@ class TaskRunner:
             ),
         ),
         "nli": TaskConfig(
-            get_system_prompt=lambda task, strategy: (
+            get_instruction_prompt=lambda task, strategy: (
                 "Answer with exactly one of the provided choices, and nothing else. Do not use markdown or extra formatting."
             ),
-            get_user_prompt=lambda task, strategy: (
+            get_task_prompt=lambda task, strategy: (
                 f"Premise: {tokenizer.tokenize(task.context or '', strategy)}\n"
                 + f"Hypothesis: {tokenizer.tokenize(task.question, strategy)}\n"
                 + "\n"
@@ -57,10 +57,10 @@ class TaskRunner:
             ),
         ),
         "extraction": TaskConfig(
-            get_system_prompt=lambda task, strategy: (
+            get_instruction_prompt=lambda task, strategy: (
                 'Extract the answer from the "Context", and return only the answer. Do not use markdown or extra formatting.'
             ),
-            get_user_prompt=lambda task, strategy: (
+            get_task_prompt=lambda task, strategy: (
                 f"Context: {tokenizer.tokenize(task.context or '', strategy)}\n" + f"Question: {tokenizer.tokenize(task.question, strategy)}"
             ),
             evaluate=lambda task, strategy, response: max(
@@ -69,23 +69,23 @@ class TaskRunner:
             ),
         ),
         "correction": TaskConfig(
-            get_system_prompt=lambda task, strategy: (
+            get_instruction_prompt=lambda task, strategy: (
                 'Identify and correct typos in "Text".\n'
                 + 'Return corrections in the format: "Typo -> Correction".\n'
                 + "If multiple exist, list them one per line.\n"
                 + "Return only the corrections. Do not use markdown or extra formatting."
             ),
-            get_user_prompt=lambda task, strategy: f"Text: {tokenizer.tokenize(task.question, strategy)}",
+            get_task_prompt=lambda task, strategy: f"Text: {tokenizer.tokenize(task.question, strategy)}",
             evaluate=lambda task, strategy, response: (
                 sum(1.0 if tokenizer.normalize(str(gt), strategy) in tokenizer.normalize(response, strategy) else 0.0 for gt in task.ground_truths)
                 / len(task.ground_truths)
             ),
         ),
         "char_counting": TaskConfig(
-            get_system_prompt=lambda task, strategy: (
+            get_instruction_prompt=lambda task, strategy: (
                 'Count the number of "Character" in "Text". Answer with a single number only. Do not use markdown or extra formatting.'
             ),
-            get_user_prompt=lambda task, strategy: f"Text: {tokenizer.tokenize(task.context or '', strategy)}\n" + f"Character: {task.question}",
+            get_task_prompt=lambda task, strategy: f"Text: {tokenizer.tokenize(task.context or '', strategy)}\n" + f"Character: {task.question}",
             evaluate=lambda task, strategy, response: 1.0 if any(str(gt) == response.strip() for gt in task.ground_truths) else 0.0,
         ),
     }
@@ -115,15 +115,16 @@ class TaskRunner:
 
     def run_strategy(self, model: str, strategy: TokenizationStrategy, task: Task, reasoning: Reasoning):
         config = self.configs[task.type]
-        user_prompt = config.get_user_prompt(task, strategy)
+        task_prompt = config.get_task_prompt(task, strategy)
+        user_prompt = config.get_instruction_prompt(task, strategy) + "\n\n" + task_prompt
 
-        res = generate_text(model=openai(model), system=config.get_system_prompt(task, strategy), prompt=user_prompt, reasoning=reasoning)
+        res = generate_text(model=openai(model), prompt=user_prompt, reasoning=reasoning)
 
         return TaskResult(
             task_id=task.id,
             task_type=task.type,
             tokenization_strategy=strategy,
-            user_prompt=user_prompt,
+            task_prompt=task_prompt,
             response=res.text,
             dollars=self.get_cost_from_response(res),
             evaluation=config.evaluate(task, strategy, res.text),

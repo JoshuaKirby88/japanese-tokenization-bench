@@ -21,8 +21,8 @@ class Task:
 
 @dataclass
 class TaskConfig:
-    get_system_prompt: Callable[[Task, TokenizationStrategy], str]
-    get_user_prompt: Callable[[Task, TokenizationStrategy], str]
+    get_instruction_prompt: Callable[[Task, TokenizationStrategy], str]
+    get_task_prompt: Callable[[Task, TokenizationStrategy], str]
     evaluate: Callable[[Task, TokenizationStrategy, str], float]
 
 
@@ -31,7 +31,7 @@ class TaskResult:
     task_id: str
     task_type: TaskType
     tokenization_strategy: TokenizationStrategy
-    user_prompt: str
+    task_prompt: str
     response: str
     ground_truths: list[str] | list[int]
     dollars: float
