@@ -1,3 +1,4 @@
+import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
@@ -69,17 +70,25 @@ class TaskRunner:
             ),
         ),
         "correction": TaskConfig(
-            get_instruction_prompt=lambda task, strategy: (
-                'Identify and correct typos in "Text".\n'
-                + 'Return corrections in the format: "Typo -> Correction".\n'
-                + "If multiple exist, list them one per line.\n"
-                + "Return only the corrections. Do not use markdown or extra formatting."
+            get_instruction_prompt=lambda task, strategy: "\n".join(
+                [
+                    "This is a typo-correction task for Japanese text.",
+                    "Text contains at least one typo. Output only typo corrections with minimal edits.",
+                    "Spaces are analysis artifacts. Do not treat spacing restoration/removal as a correction.",
+                    "Before answering, verify each pair is minimal and local.",
+                    "",
+                    "Rules:",
+                    '1) Each line must be exactly: "Typo -> Correction".',
+                    "2) The left side must be a contiguous substring from Text.",
+                    "3) The right side must be only the replacement for that typo.",
+                    "4) Each pair must be minimal (typo span only, no extra context).",
+                    "5) No paraphrasing, grammar rewriting, or summarization.",
+                    "6) No content-word substitution (noun/stem rewrites).",
+                    "7) No explanations, notes, extra symbols, or extra prose.",
+                ]
             ),
             get_task_prompt=lambda task, strategy: f"Text: {tokenizer.tokenize(task.question, strategy)}",
-            evaluate=lambda task, strategy, response: (
-                sum(1.0 if tokenizer.normalize(str(gt), strategy) in tokenizer.normalize(response, strategy) else 0.0 for gt in task.ground_truths)
-                / len(task.ground_truths)
-            ),
+            evaluate=lambda task, strategy, response: TaskRunner.correction_score(task, strategy, response),
         ),
         "char_counting": TaskConfig(
             get_instruction_prompt=lambda task, strategy: (
@@ -90,10 +99,45 @@ class TaskRunner:
                 max(
                     (max(0.0, 1.0 - abs(int(response.strip()) - int(gt)) / int(gt)) if int(gt) > 0 else (1.0 if int(response.strip()) == 0 else 0.0))
                     for gt in task.ground_truths
-                ) if response.strip().isdigit() else 0.0
+                )
+                if response.strip().isdigit()
+                else 0.0
             ),
         ),
     }
+
+    @staticmethod
+    def correction_score(task: Task, strategy: TokenizationStrategy, response: str):
+        def normalize_part(text: str):
+            text = text.strip().replace("（", "(").replace("）", ")").replace("\u3000", " ")
+            text = text.strip("「」『』\"'`")
+            return tokenizer.normalize(text, strategy).lower()
+
+        def parse_pairs(text: str):
+            pairs: set[tuple[str, str]] = set()
+            for raw_line in text.splitlines():
+                line = raw_line.strip()
+                if not line:
+                    continue
+                if line.startswith("- "):
+                    line = line[2:].strip()
+                line = re.sub(r"^\d+[.)]\s*", "", line)
+                match = re.compile(r"^(.+?)\s*->\s*(.+)$").match(line)
+                if not match:
+                    continue
+                typo = normalize_part(match.group(1))
+                correction = normalize_part(match.group(2))
+                if typo and correction and typo != correction:
+                    pairs.add((typo, correction))
+            return pairs
+
+        ground_truth_pairs = parse_pairs("\n".join(str(gt) for gt in task.ground_truths))
+        predicted_pairs = parse_pairs(response)
+
+        true_positives = len(predicted_pairs & ground_truth_pairs)
+        precision = true_positives / len(predicted_pairs) if predicted_pairs else (1.0 if not ground_truth_pairs else 0.0)
+        recall = true_positives / len(ground_truth_pairs) if ground_truth_pairs else 1.0
+        return (2 * precision * recall) / (precision + recall) if precision + recall > 0 else 0.0
 
     @staticmethod
     def compute_f1(prediction: str, ground_truth: str):

@@ -1,13 +1,16 @@
 import datetime
 import json
+import os
+import random
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
+from typing import cast
 
 import src.patch_sdk as _
 from src.dataset.index import DatasetLoader
-from src.dataset.model import DATASET_NAMES, DatasetName
-from src.run.model import BatchResult, DatasetResult, ModelConfig, ModelResult, ResultSummary, StrategySummary
+from src.dataset.model import DatasetName
+from src.run.model import BatchResult, DatasetResult, ModelConfig, ModelResult, Reasoning, ResultSummary, StrategySummary
 from src.task.index import TaskRunner
 from src.task.model import Task, TaskResult
 from src.tokenizer import TOKENIZATION_STRATEGIES, TokenizationStrategy
@@ -19,13 +22,11 @@ class Runner:
     dataset_loader = DatasetLoader()
     task_runner = TaskRunner()
 
-    def run(self, model_config: ModelConfig, dataset_name: DatasetName, strategies: list[TokenizationStrategy], n: int):
-        print(f"Running {dataset_name} with {model_config} for n={n}...")
-        tasks: list[Task] = []
-        for i, task in enumerate(self.dataset_loader.load_tasks(dataset_name)):
-            if i == n:
-                break
-            tasks.append(task)
+    def run(self, model_config: ModelConfig, dataset_name: DatasetName, strategies: list[TokenizationStrategy], n: int, seed: int = 0):
+        print(f"Running {dataset_name} with {model_config} for n={n}, seed={seed}...")
+        all_tasks = list(self.dataset_loader.load_tasks(dataset_name))
+        random.Random(seed).shuffle(all_tasks)
+        tasks = all_tasks[:n]
 
         with ThreadPoolExecutor(max_workers=5) as executor:
             strategy_to_result_list: list[dict[TokenizationStrategy, TaskResult]] = list(
@@ -59,14 +60,18 @@ class Runner:
 
         return summary
 
-    def run_batch(self, model_configs: list[ModelConfig], dataset_names: list[DatasetName], strategies: list[TokenizationStrategy], n: int):
+    def run_batch(
+        self, model_configs: list[ModelConfig], dataset_names: list[DatasetName], strategies: list[TokenizationStrategy], n: int, seed: int
+    ):
         model_results: dict[str, ModelResult] = {}
 
         for model_config in model_configs:
             dataset_results: dict[DatasetName, DatasetResult] = {}
             for dataset_name in dataset_names:
                 try:
-                    dataset_results[dataset_name] = self.run(model_config=model_config, dataset_name=dataset_name, strategies=strategies, n=n)
+                    dataset_results[dataset_name] = self.run(
+                        model_config=model_config, dataset_name=dataset_name, strategies=strategies, n=n, seed=seed
+                    )
                 except Exception as e:
                     print(f"Error running {dataset_name} with {model_config}: {e}")
 
@@ -87,6 +92,8 @@ class Runner:
             dollars=sum(m.dollars for m in model_results.values()),
             summary=self.aggregate_summaries(strategies=strategies, summaries=[m.summary for m in model_results.values()]),
             model_results=model_results,
+            n=n,
+            seed=seed,
         )
 
         RESULT_DIR.mkdir(parents=True, exist_ok=True)
@@ -113,9 +120,14 @@ class Runner:
 
 if __name__ == "__main__":
     runner = Runner()
+    model_name = os.getenv("RUN_MODEL", "google/gemini-3-flash-preview:floor")
+    reasoning = cast(Reasoning, os.getenv("RUN_REASONING", "none"))
+    n = int(os.getenv("RUN_N", "5"))
+    seed = int(os.getenv("RUN_SEED", "0"))
     runner.run_batch(
         strategies=TOKENIZATION_STRATEGIES,
-        model_configs=[ModelConfig(model="qwen/qwen3-8b", reasoning="low")],
-        dataset_names=DATASET_NAMES,
-        n=50,
+        model_configs=[ModelConfig(model=model_name, reasoning=reasoning)],
+        dataset_names=["JWTD"],
+        n=n,
+        seed=seed,
     )
