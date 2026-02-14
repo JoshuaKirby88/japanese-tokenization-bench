@@ -7,12 +7,19 @@ from src.dataset.jwtd import prepare_jwtd
 from src.dataset.model import CharCount
 
 DATA_DIR = Path("data/char_count")
-OUTPUT_FILE = DATA_DIR / "test.jsonl"
 JWTD_FILE = Path("data/jwtd/test.jsonl")
 ID_PREFIX = "char_count_wiki"
+DEFAULT_TARGET_LENGTH = 150
+DEFAULT_LENGTH_VARIANCE = 0.2
+DEFAULT_NUM_SAMPLES = 500
+TARGET_CHARS = ["が", "は", "を", "に", "の", "も", "た", "て", "だ", "る", "。", "、", "日", "本", "学", "者"]
 
 
-def generate_char_count_dataset(n_samples: int, target_length: int, length_variance: float, target_chars: list[str]):
+def get_char_count_output_file(length_multiplier: int):
+    return DATA_DIR / f"test_m{length_multiplier}.jsonl"
+
+
+def generate_char_count_dataset(n_samples: int, target_length: int, length_variance: float, target_chars: list[str], output_file: Path):
     samples: list[CharCount] = []
     prepare_jwtd()
 
@@ -62,18 +69,23 @@ def generate_char_count_dataset(n_samples: int, target_length: int, length_varia
         )
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         for sample in samples:
             f.write(json.dumps(sample, ensure_ascii=False) + "\n")
 
 
-def prepare_char_count():
-    if not OUTPUT_FILE.exists():
+def prepare_char_count(length_multiplier: int):
+    if length_multiplier < 1:
+        raise ValueError("length_multiplier must be an integer >= 1.")
+
+    output_file = get_char_count_output_file(length_multiplier)
+    if not output_file.exists():
         print("Generating CharCount dataset from JWTD...")
         generate_char_count_dataset(
-            500,
-            150,
-            0.2,
-            ["が", "は", "を", "に", "の", "も", "た", "て", "だ", "る", "。", "、", "日", "本", "学", "者"],
+            n_samples=DEFAULT_NUM_SAMPLES,
+            target_length=DEFAULT_TARGET_LENGTH * length_multiplier,
+            length_variance=DEFAULT_LENGTH_VARIANCE,
+            target_chars=TARGET_CHARS,
+            output_file=output_file,
         )
-        print(f"CharCount dataset generated at {OUTPUT_FILE}")
+        print(f"CharCount dataset generated at {output_file}")

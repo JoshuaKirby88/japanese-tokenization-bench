@@ -53,6 +53,7 @@ class BatchResult:
     strategies: list[TokenizationStrategy]
     dollars: float
     n: int
-    seed: int = 0
+    length_multiplier: int
+    seed: int
     summary: ResultSummary
     model_results: dict[str, ModelResult]

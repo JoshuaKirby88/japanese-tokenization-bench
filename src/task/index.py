@@ -1,3 +1,4 @@
+import random
 import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -21,12 +22,13 @@ class TaskRunner:
             get_instruction_prompt=lambda task, strategy: (
                 "Answer with exactly one of the provided choices, and nothing else. Do not use markdown or extra formatting."
             ),
-            get_task_prompt=lambda task, strategy: (
-                f"Question: {tokenizer.tokenize(task.question, strategy)}\n"
+            get_task_prompt=lambda task, strategy, distractors, length_multiplier: (
+                f"Question: {tokenizer.tokenize(task.question + ('\n' + '\n'.join(d.question for d in distractors) if distractors else ''), strategy)}\n"
                 + "\n"
                 + "Choices:\n"
                 + "\n".join(tokenizer.tokenize(option, strategy) for option in task.options)
             ),
+            get_ground_truths=lambda task, distractors, length_multiplier: task.ground_truths,
             evaluate=lambda task, strategy, response: (
                 1.0
                 if any(
@@ -41,13 +43,14 @@ class TaskRunner:
             get_instruction_prompt=lambda task, strategy: (
                 "Answer with exactly one of the provided choices, and nothing else. Do not use markdown or extra formatting."
             ),
-            get_task_prompt=lambda task, strategy: (
-                f"Premise: {tokenizer.tokenize(task.context or '', strategy)}\n"
+            get_task_prompt=lambda task, strategy, distractors, length_multiplier: (
+                f"Premise: {tokenizer.tokenize(((task.context or '') + ('\n' + '\n'.join(d.context or '' for d in distractors) if distractors else '')).strip(), strategy)}\n"
                 + f"Hypothesis: {tokenizer.tokenize(task.question, strategy)}\n"
                 + "\n"
                 + "Choices:\n"
                 + "\n".join(label for label in NIL_LABELS)
             ),
+            get_ground_truths=lambda task, distractors, length_multiplier: task.ground_truths,
             evaluate=lambda task, strategy, response: (
                 1.0
                 if any(
@@ -61,9 +64,11 @@ class TaskRunner:
             get_instruction_prompt=lambda task, strategy: (
                 'Extract the answer from the "Context", and return only the answer. Do not use markdown or extra formatting.'
             ),
-            get_task_prompt=lambda task, strategy: (
-                f"Context: {tokenizer.tokenize(task.context or '', strategy)}\n" + f"Question: {tokenizer.tokenize(task.question, strategy)}"
+            get_task_prompt=lambda task, strategy, distractors, length_multiplier: (
+                f"Context: {tokenizer.tokenize(((task.context or '') + ('\n' + '\n'.join(d.context or '' for d in distractors) if distractors else '')).strip(), strategy)}\n"
+                + f"Question: {tokenizer.tokenize(task.question, strategy)}"
             ),
+            get_ground_truths=lambda task, distractors, length_multiplier: task.ground_truths,
             evaluate=lambda task, strategy, response: max(
                 (TaskRunner.compute_f1(tokenizer.normalize(response, strategy), tokenizer.normalize(str(gt), strategy)) for gt in task.ground_truths),
                 default=0.0,
@@ -87,14 +92,22 @@ class TaskRunner:
                     "7) No explanations, notes, extra symbols, or extra prose.",
                 ]
             ),
-            get_task_prompt=lambda task, strategy: f"Text: {tokenizer.tokenize(task.question, strategy)}",
+            get_task_prompt=lambda task, strategy, distractors, length_multiplier: (
+                f"Text: {tokenizer.tokenize(task.question + ('\n' + '\n'.join(d.question for d in distractors) if distractors else ''), strategy)}"
+            ),
+            get_ground_truths=lambda task, distractors, length_multiplier: (
+                [str(gt) for gt in task.ground_truths] + [str(gt) for d in distractors for gt in d.ground_truths]
+            ),
             evaluate=lambda task, strategy, response: TaskRunner.correction_score(task, strategy, response),
         ),
         "char_counting": TaskConfig(
             get_instruction_prompt=lambda task, strategy: (
                 'Count the number of "Character" in "Text". Answer with a single number only. Do not use markdown or extra formatting.'
             ),
-            get_task_prompt=lambda task, strategy: f"Text: {tokenizer.tokenize(task.context or '', strategy)}\n" + f"Character: {task.question}",
+            get_task_prompt=lambda task, strategy, distractors, length_multiplier: (
+                f"Text: {tokenizer.tokenize(task.context or '', strategy)}\n" + f"Character: {task.question}"
+            ),
+            get_ground_truths=lambda task, distractors, length_multiplier: task.ground_truths,
             evaluate=lambda task, strategy, response: (
                 max(
                     (max(0.0, 1.0 - abs(int(response.strip()) - int(gt)) / int(gt)) if int(gt) > 0 else (1.0 if int(response.strip()) == 0 else 0.0))
@@ -162,10 +175,22 @@ class TaskRunner:
                     pass
         return dollars
 
-    def run_strategy(self, model_config: ModelConfig, strategy: TokenizationStrategy, task: Task):
+    @staticmethod
+    def select_distractors(task: Task, distractor_candidates: list[Task], length_multiplier: int) -> list[Task]:
+        pool = [d for d in distractor_candidates if d.id != task.id and d.type == task.type]
+        if not pool:
+            return []
+        sample_size = min(length_multiplier, len(pool))
+        return random.sample(pool, sample_size)
+
+    def run_strategy(
+        self, model_config: ModelConfig, strategy: TokenizationStrategy, task: Task, distractor_candidates: list[Task], length_multiplier: int
+    ):
         config = self.configs[task.type]
-        task_prompt = config.get_task_prompt(task, strategy)
-        user_prompt = config.get_instruction_prompt(task, strategy) + "\n\n" + task_prompt
+        distractors = self.select_distractors(task=task, distractor_candidates=distractor_candidates, length_multiplier=length_multiplier)
+        task_prompt = config.get_task_prompt(task, strategy, distractors, length_multiplier)
+        task.ground_truths = config.get_ground_truths(task, distractors, length_multiplier)
+        user_prompt = "\n\n".join([config.get_instruction_prompt(task, strategy), task_prompt])
 
         res = generate_text(model=openai(model_config.model), reasoning=model_config.reasoning, prompt=user_prompt)
 
@@ -181,11 +206,24 @@ class TaskRunner:
             reasoning=res.reasoning,
         )
 
-    def run(self, model_config: ModelConfig, strategies: list[TokenizationStrategy], task: Task):
+    def run(
+        self,
+        model_config: ModelConfig,
+        strategies: list[TokenizationStrategy],
+        task: Task,
+        distractor_candidates: list[Task],
+        length_multiplier: int,
+    ):
         with ThreadPoolExecutor() as executor:
             task_results = list(
                 executor.map(
-                    lambda strategy: self.run_strategy(model_config=model_config, strategy=strategy, task=task),
+                    lambda strategy: self.run_strategy(
+                        model_config=model_config,
+                        strategy=strategy,
+                        task=task,
+                        distractor_candidates=distractor_candidates,
+                        length_multiplier=length_multiplier,
+                    ),
                     strategies,
                 )
             )

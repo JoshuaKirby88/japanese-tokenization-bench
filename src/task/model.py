@@ -22,7 +22,8 @@ class Task:
 @dataclass
 class TaskConfig:
     get_instruction_prompt: Callable[[Task, TokenizationStrategy], str]
-    get_task_prompt: Callable[[Task, TokenizationStrategy], str]
+    get_task_prompt: Callable[[Task, TokenizationStrategy, list[Task], int], str]
+    get_ground_truths: Callable[[Task, list[Task], int], list[str] | list[int]]
     evaluate: Callable[[Task, TokenizationStrategy, str], float]
 
 
