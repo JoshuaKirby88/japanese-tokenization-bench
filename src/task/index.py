@@ -86,7 +86,12 @@ class TaskRunner:
                 'Count the number of "Character" in "Text". Answer with a single number only. Do not use markdown or extra formatting.'
             ),
             get_task_prompt=lambda task, strategy: f"Text: {tokenizer.tokenize(task.context or '', strategy)}\n" + f"Character: {task.question}",
-            evaluate=lambda task, strategy, response: 1.0 if any(str(gt) == response.strip() for gt in task.ground_truths) else 0.0,
+            evaluate=lambda task, strategy, response: (
+                max(
+                    (max(0.0, 1.0 - abs(int(response.strip()) - int(gt)) / int(gt)) if int(gt) > 0 else (1.0 if int(response.strip()) == 0 else 0.0))
+                    for gt in task.ground_truths
+                ) if response.strip().isdigit() else 0.0
+            ),
         ),
     }
 
