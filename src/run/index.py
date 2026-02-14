@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
 
+import src.patch_sdk as _
 from src.dataset.index import DatasetLoader
 from src.dataset.model import DATASET_NAMES, DatasetName
 from src.run.model import BatchResult, DatasetResult, ModelConfig, ModelResult, ResultSummary, StrategySummary
@@ -29,7 +30,7 @@ class Runner:
         with ThreadPoolExecutor(max_workers=5) as executor:
             strategy_to_result_list: list[dict[TokenizationStrategy, TaskResult]] = list(
                 executor.map(
-                    lambda t: self.task_runner.run(model=model_config.model, strategies=strategies, task=t, reasoning=model_config.reasoning),
+                    lambda t: self.task_runner.run(model_config=model_config, strategies=strategies, task=t),
                     tasks,
                 )
             )

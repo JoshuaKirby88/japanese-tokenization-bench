@@ -1,3 +1,5 @@
+import re
+import time
 from typing import Any
 
 from ai_sdk.providers.openai import OpenAIModel
@@ -24,7 +26,25 @@ def patch_openai_provider():
             else:
                 kwargs["reasoning_effort"] = reasoning
 
-        result = original_generate_text(self, prompt=prompt, system=system, messages=messages, **kwargs)
+        while True:
+            try:
+                result = original_generate_text(self, prompt=prompt, system=system, messages=messages, **kwargs)
+                break
+            except Exception as e:
+                error_str = str(e)
+                if "429" in error_str:
+                    match = re.search(r"'X-RateLimit-Reset':\s*'(\d+)'", error_str)
+                    if match:
+                        reset_timestamp_ms = int(match.group(1))
+                        wait_time = (reset_timestamp_ms / 1000.0) - time.time() + 1.0
+                        if wait_time > 0:
+                            print(f"Rate limit exceeded. Waiting {wait_time:.2f} seconds until reset...")
+                            time.sleep(wait_time)
+                            continue
+                    print("Rate limit exceeded. Waiting 10 seconds (fallback)...")
+                    time.sleep(10)
+                    continue
+                raise e
 
         raw_response = result.get("raw_response")
         if raw_response and hasattr(raw_response, "choices") and raw_response.choices:

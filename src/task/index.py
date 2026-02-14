@@ -5,7 +5,7 @@ from ai_sdk import generate_text, openai
 from ai_sdk.generate_text import GenerateTextResult
 from dotenv import load_dotenv
 
-from src.run.model import Reasoning
+from src.run.model import ModelConfig
 from src.task.model import NIL_LABELS, Task, TaskConfig, TaskResult, TaskType
 from src.tokenizer import TokenizationStrategy, Tokenizer
 
@@ -113,12 +113,12 @@ class TaskRunner:
                     pass
         return dollars
 
-    def run_strategy(self, model: str, strategy: TokenizationStrategy, task: Task, reasoning: Reasoning):
+    def run_strategy(self, model_config: ModelConfig, strategy: TokenizationStrategy, task: Task):
         config = self.configs[task.type]
         task_prompt = config.get_task_prompt(task, strategy)
         user_prompt = config.get_instruction_prompt(task, strategy) + "\n\n" + task_prompt
 
-        res = generate_text(model=openai(model), prompt=user_prompt, reasoning=reasoning)
+        res = generate_text(model=openai(model_config.model), reasoning=model_config.reasoning, prompt=user_prompt)
 
         return TaskResult(
             task_id=task.id,
@@ -132,11 +132,11 @@ class TaskRunner:
             reasoning=res.reasoning,
         )
 
-    def run(self, model: str, strategies: list[TokenizationStrategy], task: Task, reasoning: Reasoning):
+    def run(self, model_config: ModelConfig, strategies: list[TokenizationStrategy], task: Task):
         with ThreadPoolExecutor() as executor:
             task_results = list(
                 executor.map(
-                    lambda strategy: self.run_strategy(model=model, strategy=strategy, task=task, reasoning=reasoning),
+                    lambda strategy: self.run_strategy(model_config=model_config, strategy=strategy, task=task),
                     strategies,
                 )
             )
