@@ -20,11 +20,18 @@ class TaskRunner:
     configs: dict[TaskType, TaskConfig] = {
         "multiple_choice": TaskConfig(
             get_instruction_prompt=lambda task, strategy: (
-                "Answer with exactly one of the provided choices, and nothing else. Do not use markdown or extra formatting."
+                "Answer with exactly one of the provided choices from [Target Question], and nothing else. "
+                "Ignore [Auxiliary Questions]. Do not use markdown or extra formatting."
             ),
             get_task_prompt=lambda task, strategy, distractors, length_multiplier: (
-                f"Question: {tokenizer.tokenize(task.question + ('\n' + '\n'.join(d.question for d in distractors) if distractors else ''), strategy)}\n"
-                + "\n"
+                "[Target Question]\n"
+                + f"{tokenizer.tokenize(task.question, strategy)}\n\n"
+                + (
+                    "[Auxiliary Questions]\n"
+                    + f"{tokenizer.tokenize('\n'.join(d.question for d in distractors), strategy)}\n\n"
+                    if distractors
+                    else ""
+                )
                 + "Choices:\n"
                 + "\n".join(tokenizer.tokenize(option, strategy) for option in task.options)
             ),
@@ -41,12 +48,20 @@ class TaskRunner:
         ),
         "nli": TaskConfig(
             get_instruction_prompt=lambda task, strategy: (
-                "Answer with exactly one of the provided choices, and nothing else. Do not use markdown or extra formatting."
+                "Answer with exactly one of the provided choices based only on [Target Premise] and [Target Hypothesis]. "
+                "Ignore [Auxiliary Premises]. Do not use markdown or extra formatting."
             ),
             get_task_prompt=lambda task, strategy, distractors, length_multiplier: (
-                f"Premise: {tokenizer.tokenize(((task.context or '') + ('\n' + '\n'.join(d.context or '' for d in distractors) if distractors else '')).strip(), strategy)}\n"
-                + f"Hypothesis: {tokenizer.tokenize(task.question, strategy)}\n"
-                + "\n"
+                "[Target Premise]\n"
+                + f"{tokenizer.tokenize(task.context or '', strategy)}\n\n"
+                + (
+                    "[Auxiliary Premises]\n"
+                    + f"{tokenizer.tokenize('\n'.join(d.context or '' for d in distractors), strategy)}\n\n"
+                    if distractors
+                    else ""
+                )
+                + "[Target Hypothesis]\n"
+                + f"{tokenizer.tokenize(task.question, strategy)}\n\n"
                 + "Choices:\n"
                 + "\n".join(label for label in NIL_LABELS)
             ),
@@ -62,11 +77,20 @@ class TaskRunner:
         ),
         "extraction": TaskConfig(
             get_instruction_prompt=lambda task, strategy: (
-                'Extract the answer from the "Context", and return only the answer. Do not use markdown or extra formatting.'
+                'Extract the answer from [Target Context] for [Target Question]. '
+                'Ignore [Auxiliary Context]. Return only the answer. Do not use markdown or extra formatting.'
             ),
             get_task_prompt=lambda task, strategy, distractors, length_multiplier: (
-                f"Context: {tokenizer.tokenize(((task.context or '') + ('\n' + '\n'.join(d.context or '' for d in distractors) if distractors else '')).strip(), strategy)}\n"
-                + f"Question: {tokenizer.tokenize(task.question, strategy)}"
+                "[Target Context]\n"
+                + f"{tokenizer.tokenize(task.context or '', strategy)}\n\n"
+                + (
+                    "[Auxiliary Context]\n"
+                    + f"{tokenizer.tokenize('\n'.join(d.context or '' for d in distractors), strategy)}\n\n"
+                    if distractors
+                    else ""
+                )
+                + "[Target Question]\n"
+                + f"{tokenizer.tokenize(task.question, strategy)}"
             ),
             get_ground_truths=lambda task, distractors, length_multiplier: task.ground_truths,
             evaluate=lambda task, strategy, response: max(
@@ -78,7 +102,7 @@ class TaskRunner:
             get_instruction_prompt=lambda task, strategy: "\n".join(
                 [
                     "This is a typo-correction task for Japanese text.",
-                    "Text contains at least one typo. Output only typo corrections with minimal edits.",
+                    "Process both [Primary Text] and [Additional Text]. Output only typo corrections with minimal edits.",
                     "Spaces are analysis artifacts. Do not treat spacing restoration/removal as a correction.",
                     "Before answering, verify each pair is minimal and local.",
                     "",
@@ -93,7 +117,14 @@ class TaskRunner:
                 ]
             ),
             get_task_prompt=lambda task, strategy, distractors, length_multiplier: (
-                f"Text: {tokenizer.tokenize(task.question + ('\n' + '\n'.join(d.question for d in distractors) if distractors else ''), strategy)}"
+                "[Primary Text]\n"
+                + f"{tokenizer.tokenize(task.question, strategy)}\n\n"
+                + (
+                    "[Additional Text]\n"
+                    + f"{tokenizer.tokenize('\n'.join(d.question for d in distractors), strategy)}"
+                    if distractors
+                    else ""
+                )
             ),
             get_ground_truths=lambda task, distractors, length_multiplier: (
                 [str(gt) for gt in task.ground_truths] + [str(gt) for d in distractors for gt in d.ground_truths]
@@ -122,9 +153,7 @@ class TaskRunner:
     @staticmethod
     def correction_score(task: Task, strategy: TokenizationStrategy, response: str):
         def normalize_part(text: str):
-            text = text.strip().replace("（", "(").replace("）", ")").replace("\u3000", " ")
-            text = text.strip("「」『』\"'`")
-            return tokenizer.normalize(text, strategy).lower()
+            return tokenizer.normalize(text.strip(), strategy).lower()
 
         def parse_pairs(text: str):
             pairs: set[tuple[str, str]] = set()
@@ -132,15 +161,13 @@ class TaskRunner:
                 line = raw_line.strip()
                 if not line:
                     continue
-                if line.startswith("- "):
-                    line = line[2:].strip()
                 line = re.sub(r"^\d+[.)]\s*", "", line)
                 match = re.compile(r"^(.+?)\s*->\s*(.+)$").match(line)
                 if not match:
                     continue
                 typo = normalize_part(match.group(1))
                 correction = normalize_part(match.group(2))
-                if typo and correction and typo != correction:
+                if typo and correction:
                     pairs.add((typo, correction))
             return pairs
 
