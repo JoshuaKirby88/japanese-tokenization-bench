@@ -8,7 +8,7 @@ from pathlib import Path
 import src.patch_sdk as _
 from src.dataset.index import DatasetLoader
 from src.dataset.model import DATASET_NAMES, DatasetName
-from src.run.model import BatchResult, DatasetResult, ModelConfig, ModelResult, ResultSummary, StrategySummary
+from src.run.model import BatchResult, DatasetResult, LengthMultiplierResult, ModelConfig, ModelResult, ResultSummary, StrategySummary
 from src.task.index import TaskRunner
 from src.task.model import TaskResult
 from src.tokenizer import TOKENIZATION_STRATEGIES, TokenizationStrategy
@@ -22,7 +22,7 @@ class Runner:
     def run(
         self, model_config: ModelConfig, dataset_name: DatasetName, strategies: list[TokenizationStrategy], n: int, length_multiplier: int, seed: int
     ):
-        print(f"Running {dataset_name} with {model_config} for n={n}, seed={seed}...")
+        print(f"Running {dataset_name} with {model_config} for n={n}, seed={seed}, length_multiplier={length_multiplier}...")
         dataset_loader = DatasetLoader(length_multiplier=length_multiplier, seed=seed)
         all_tasks = list(dataset_loader.load_tasks(dataset_name))
         random.Random(seed).shuffle(all_tasks)
@@ -38,7 +38,7 @@ class Runner:
                 )
             )
 
-        return DatasetResult(
+        return LengthMultiplierResult(
             dollars=sum(r.dollars for s_to_r in strategy_to_result_list for r in s_to_r.values()),
             summary=self.calculate_summary(strategies, strategy_to_result_list),
             strategy_results=strategy_to_result_list,
@@ -68,7 +68,7 @@ class Runner:
         dataset_names: list[DatasetName],
         strategies: list[TokenizationStrategy],
         n: int,
-        length_multiplier: int,
+        length_multipliers: list[int],
         seed: int,
     ):
         model_results: dict[str, ModelResult] = {}
@@ -76,17 +76,26 @@ class Runner:
         for model_config in model_configs:
             dataset_results: dict[DatasetName, DatasetResult] = {}
             for dataset_name in dataset_names:
-                try:
-                    dataset_results[dataset_name] = self.run(
-                        model_config=model_config,
-                        dataset_name=dataset_name,
-                        strategies=strategies,
-                        n=n,
-                        length_multiplier=length_multiplier,
-                        seed=seed,
+                length_multiplier_results: dict[int, LengthMultiplierResult] = {}
+                for length_multiplier in length_multipliers:
+                    try:
+                        length_multiplier_results[length_multiplier] = self.run(
+                            model_config=model_config,
+                            dataset_name=dataset_name,
+                            strategies=strategies,
+                            n=n,
+                            length_multiplier=length_multiplier,
+                            seed=seed,
+                        )
+                    except Exception as e:
+                        print(f"Error running {dataset_name} with {model_config} (m={length_multiplier}): {e}")
+
+                if length_multiplier_results:
+                    dataset_results[dataset_name] = DatasetResult(
+                        dollars=sum(r.dollars for r in length_multiplier_results.values()),
+                        summary=self.aggregate_summaries(strategies=strategies, summaries=[r.summary for r in length_multiplier_results.values()]),
+                        length_multiplier_results=length_multiplier_results,
                     )
-                except Exception as e:
-                    print(f"Error running {dataset_name} with {model_config}: {e}")
 
             if dataset_results:
                 model_results[str(model_config)] = ModelResult(
@@ -106,7 +115,7 @@ class Runner:
             summary=self.aggregate_summaries(strategies=strategies, summaries=[m.summary for m in model_results.values()]),
             model_results=model_results,
             n=n,
-            length_multiplier=length_multiplier,
+            length_multipliers=length_multipliers,
             seed=seed,
         )
 
@@ -136,9 +145,15 @@ if __name__ == "__main__":
     runner = Runner()
     runner.run_batch(
         strategies=TOKENIZATION_STRATEGIES,
-        model_configs=[ModelConfig(model="google/gemini-3-flash-preview:floor", reasoning="none")],
+        model_configs=[
+            ModelConfig(model="google/gemini-2.5-flash-lite:floor", reasoning="none"),
+            ModelConfig(model="google/gemini-3-flash-preview:floor", reasoning="none"),
+            ModelConfig(model="google/gemini-2.5-flash-lite:floor", reasoning="high"),
+            ModelConfig(model="qwen/qwen3-8b:floor", reasoning="none"),
+            ModelConfig(model="mistralai/mistral-small-3.2-24b-instruct:floor", reasoning="none"),
+        ],
         dataset_names=DATASET_NAMES,
-        n=5,
-        length_multiplier=1,
+        n=30,
+        length_multipliers=[1, 5, 10],
         seed=0,
     )

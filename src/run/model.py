@@ -33,10 +33,17 @@ ResultSummary = dict[TokenizationStrategy, StrategySummary]
 
 
 @dataclass
-class DatasetResult:
+class LengthMultiplierResult:
     dollars: float
     summary: ResultSummary
     strategy_results: list[dict[TokenizationStrategy, TaskResult]]
+
+
+@dataclass
+class DatasetResult:
+    dollars: float
+    summary: ResultSummary
+    length_multiplier_results: dict[int, LengthMultiplierResult]
 
 
 @dataclass
@@ -53,7 +60,7 @@ class BatchResult:
     strategies: list[TokenizationStrategy]
     dollars: float
     n: int
-    length_multiplier: int
+    length_multipliers: list[int]
     seed: int
     summary: ResultSummary
     model_results: dict[str, ModelResult]
