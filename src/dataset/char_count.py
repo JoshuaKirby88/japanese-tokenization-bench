@@ -19,14 +19,15 @@ def get_char_count_output_file(length_multiplier: int):
     return DATA_DIR / f"test_m{length_multiplier}.jsonl"
 
 
-def generate_char_count_dataset(n_samples: int, target_length: int, length_variance: float, target_chars: list[str], output_file: Path):
+def generate_char_count_dataset(n_samples: int, target_length: int, length_variance: float, target_chars: list[str], output_file: Path, seed: int):
     samples: list[CharCount] = []
     prepare_jwtd()
+    rng = random.Random(seed)
 
     with open(JWTD_FILE, "r", encoding="utf-8") as f:
         jwtd_lines = f.readlines()
 
-    random.shuffle(jwtd_lines)
+    rng.shuffle(jwtd_lines)
 
     min_len = int(target_length * (1 - length_variance))
     max_len = int(target_length * (1 + length_variance))
@@ -45,7 +46,7 @@ def generate_char_count_dataset(n_samples: int, target_length: int, length_varia
             current_block += text
         else:
             if len(current_block) >= min_len:
-                character = random.choice(target_chars)
+                character = rng.choice(target_chars)
                 samples.append(
                     {
                         "id": f"{ID_PREFIX}_{count}",
@@ -58,7 +59,7 @@ def generate_char_count_dataset(n_samples: int, target_length: int, length_varia
             current_block = text
 
     if count < n_samples and len(current_block) >= min_len:
-        character = random.choice(target_chars)
+        character = rng.choice(target_chars)
         samples.append(
             {
                 "id": f"{ID_PREFIX}_{count}",
@@ -74,7 +75,7 @@ def generate_char_count_dataset(n_samples: int, target_length: int, length_varia
             f.write(json.dumps(sample, ensure_ascii=False) + "\n")
 
 
-def prepare_char_count(length_multiplier: int):
+def prepare_char_count(length_multiplier: int, seed: int):
     if length_multiplier < 1:
         raise ValueError("length_multiplier must be an integer >= 1.")
 
@@ -87,5 +88,6 @@ def prepare_char_count(length_multiplier: int):
             length_variance=DEFAULT_LENGTH_VARIANCE,
             target_chars=TARGET_CHARS,
             output_file=output_file,
+            seed=seed,
         )
         print(f"CharCount dataset generated at {output_file}")

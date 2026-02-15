@@ -23,7 +23,7 @@ class Runner:
         self, model_config: ModelConfig, dataset_name: DatasetName, strategies: list[TokenizationStrategy], n: int, length_multiplier: int, seed: int
     ):
         print(f"Running {dataset_name} with {model_config} for n={n}, seed={seed}...")
-        dataset_loader = DatasetLoader(length_multiplier=length_multiplier)
+        dataset_loader = DatasetLoader(length_multiplier=length_multiplier, seed=seed)
         all_tasks = list(dataset_loader.load_tasks(dataset_name))
         random.Random(seed).shuffle(all_tasks)
         tasks = all_tasks[:n]

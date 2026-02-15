@@ -183,13 +183,18 @@ class TaskRunner:
         sample_size = min(length_multiplier, len(pool))
         return random.sample(pool, sample_size)
 
-    def run_strategy(
-        self, model_config: ModelConfig, strategy: TokenizationStrategy, task: Task, distractor_candidates: list[Task], length_multiplier: int
-    ):
+    def run_strategy(self, model_config: ModelConfig, strategy: TokenizationStrategy, task: Task, distractors: list[Task], length_multiplier: int):
         config = self.configs[task.type]
-        distractors = self.select_distractors(task=task, distractor_candidates=distractor_candidates, length_multiplier=length_multiplier)
         task_prompt = config.get_task_prompt(task, strategy, distractors, length_multiplier)
-        task.ground_truths = config.get_ground_truths(task, distractors, length_multiplier)
+        effective_ground_truths = config.get_ground_truths(task, distractors, length_multiplier)
+        evaluation_task = Task(
+            id=task.id,
+            type=task.type,
+            context=task.context,
+            question=task.question,
+            options=task.options,
+            ground_truths=effective_ground_truths,
+        )
         user_prompt = "\n\n".join([config.get_instruction_prompt(task, strategy), task_prompt])
 
         res = generate_text(model=openai(model_config.model), reasoning=model_config.reasoning, prompt=user_prompt)
@@ -201,8 +206,8 @@ class TaskRunner:
             task_prompt=task_prompt,
             response=res.text,
             dollars=self.get_cost_from_response(res),
-            evaluation=config.evaluate(task, strategy, res.text),
-            ground_truths=task.ground_truths,
+            evaluation=config.evaluate(evaluation_task, strategy, res.text),
+            ground_truths=effective_ground_truths,
             reasoning=res.reasoning,
         )
 
@@ -214,6 +219,7 @@ class TaskRunner:
         distractor_candidates: list[Task],
         length_multiplier: int,
     ):
+        distractors = self.select_distractors(task=task, distractor_candidates=distractor_candidates, length_multiplier=length_multiplier)
         with ThreadPoolExecutor() as executor:
             task_results = list(
                 executor.map(
@@ -221,7 +227,7 @@ class TaskRunner:
                         model_config=model_config,
                         strategy=strategy,
                         task=task,
-                        distractor_candidates=distractor_candidates,
+                        distractors=distractors,
                         length_multiplier=length_multiplier,
                     ),
                     strategies,

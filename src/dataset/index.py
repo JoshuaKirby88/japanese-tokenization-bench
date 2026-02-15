@@ -20,7 +20,7 @@ os.environ["HF_DATASETS_TRUST_REMOTE_CODE"] = "1"
 
 
 class DatasetLoader:
-    def __init__(self, length_multiplier: int):
+    def __init__(self, length_multiplier: int, seed: int):
         if length_multiplier < 1:
             raise ValueError("length_multiplier must be an integer >= 1.")
         self.configs: dict[DatasetName, DatasetConfig[Any]] = {
@@ -69,7 +69,7 @@ class DatasetLoader:
             "CharCount": DatasetConfig[CharCount](
                 path="json",
                 name=str(get_char_count_output_file(length_multiplier)),
-                prepare=lambda: prepare_char_count(length_multiplier),
+                prepare=lambda: prepare_char_count(length_multiplier, seed),
                 transform=lambda r: Task(
                     id=r["id"], type="char_counting", context=r["text"], question=r["character"], options=[], ground_truths=[r["count"]]
                 ),
@@ -95,7 +95,7 @@ class DatasetLoader:
 
 
 if __name__ == "__main__":
-    loader = DatasetLoader(length_multiplier=1)
+    loader = DatasetLoader(length_multiplier=1, seed=0)
 
     print("JCommonsenseQA:")
     print(loader.load_raw("JCommonsenseQA")[0])
