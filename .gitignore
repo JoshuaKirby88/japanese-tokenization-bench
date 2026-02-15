@@ -11,4 +11,7 @@ wheels/
 .venv
 
 .env
-data/
+data/*
+data/results/*
+!data/results/
+!data/results/20260215_115324.json

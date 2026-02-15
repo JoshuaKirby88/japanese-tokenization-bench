@@ -1,64 +1,120 @@
-# Research
+# Tokenization Strategy for Japanese LLM Tasks
 
-## Topic
+This repository studies how Japanese input tokenization style affects LLM task performance. I evaluate three tokenization strategies (`baseline`, `character`, `morphology`) across five datasets, five model configurations, and three `length_multiplier` settings. In the current canonical run, `morphology` is roughly accuracy-neutral/slightly positive overall versus `baseline`, while `character` is generally worse.
 
-Effects of different tokenization strategies on Japanese text on LLM text analysis tasks.
+## Methodology
 
-## Method
+### Task families and what they measure
 
-### Phase 1: Compare different tokenization strategies
+- `multiple_choice` (`JCommonsenseQA`): commonsense selection accuracy.
+- `nli` (`JNLI`): premise-hypothesis entailment judgment.
+- `extraction` (`JSQuAD`): answer extraction from context.
+- `correction` (`JWTD`): typo detection/correction quality.
+- `char_counting` (`CharCount`): fine-grained symbol-level counting.
 
-**Tokenization Strategies:**
+### Strategy definitions
 
-- Baseline: "猫が魚を食べた。"
-- Character-Level De-Tokenization: "猫 が 魚 を 食 べ た 。"
-- Morphology-Level De-Tokenization: "猫 が 魚 を 食べ た。"
+- `baseline`: no forced detokenization.
+    - example: `猫が魚を食べた。`
+- `character`: split into character units.
+    - example: `猫 が 魚 を 食 べ た 。`
+- `morphology`: split by morphological tokens via `fugashi` (`-Owakati`).
+    - example (typical): `猫 が 魚 を 食べ た 。`
 
-**Steps:**
+See implementation in `src/tokenizer.py`.
 
-1. Feed input to LLM
-2. Get response
-3. Check against answer, and pick out winners
+## Key Findings (Canonical Run)
 
-### Phase 2: Compare implementation strategies (Static VS Dynamic)
+Canonical run file: `data/results/20260215_115324.json`
 
-**Implementation Strategies:**
+### Global strategy comparison
 
-- Static: Pre-process the input based on the best tokenization strategy from phase 1.
-- Dynamic: Instruct the LLM to apply the chosen tokenization strategy on text before performing any analysis.
+| strategy   |         avg score |    delta vs baseline |              cost |
+| ---------- | ----------------: | -------------------: | ----------------: |
+| baseline   | 62.20% (0.621978) |                    - | $0.628888 (1.00x) |
+| character  | 59.79% (0.597903) | -2.41 pp (-0.024075) | $0.907878 (1.44x) |
+| morphology | 62.28% (0.622776) | +0.08 pp (+0.000797) | $0.823223 (1.31x) |
 
-## Hypothesis
+### Where effects were strongest
 
-De-Tokenization will improve LLM's ability to perform fine-grained analysis on individual characters.
+| slice                                             | notable effect            |                                magnitude | implication                                                   |
+| ------------------------------------------------- | ------------------------- | ---------------------------------------: | ------------------------------------------------------------- |
+| dataset = `JWTD`                                  | `morphology` > `baseline` |                     +1.60 pp (+0.015985) | Tokenization can help harder correction tasks.                |
+| dataset = `JCommonsenseQA`                        | `character` < `baseline`  |                     -6.44 pp (-0.064444) | Character splitting hurts high-accuracy MCQ behavior.         |
+| model = `google/gemini-2.5-flash-lite:floor:high` | `morphology` > `baseline` |                     +2.61 pp (+0.026135) | Benefit is model-dependent.                                   |
+| model = `qwen/qwen3-8b:floor:none`                | `character` < `baseline`  |                     -7.11 pp (-0.071116) | Character strategy regresses strongly on some models.         |
+| length multiplier = `10` (vs `1`)                 | lower quality trend       | baseline: -1.90 pp, morphology: -3.39 pp | Bigger context pressure did not improve results in aggregate. |
 
-## Details
+### Interpretation note
 
-**Models:**
+The strategy effects in this run are small overall and should be treated as preliminary.
 
-- Big: GPT-5
-- Small: Gemma 3 4B
-- Chinese: GLM 4.7 Flash, Qwen 3
-- Japanese: Swallow (Llama-based), PLaMo, Japanese Stable LM
-- High Japanese Proficiency: Gemini 3 Flash, Gemini 2.5 Flash Lite
+- Global `morphology` vs `baseline` is near-zero (`+0.08 pp`), while `character` is modestly negative (`-2.41 pp`).
+- This low sensitivity appears across heterogeneous model families (Gemini, Qwen, Mistral) with different tokenizer/vocabulary characteristics.
+- Despite major model differences in Japanese proficiency, scale, and cost tiers, detokenization strategy usually has a much smaller impact than model choice itself.
 
-**Dataset:**
+## Experiment Snapshot
 
-- JCommonsenseQA (shunk031/JGLUE): Multiple choice questions on Japanese language, e.g. "What words are used when meeting someone for the first time?"
-- JNLI (shunk031/JGLUE): True/False questions on whether the premise logically implies the hypothesis, e.g. Premise="A man is running." Hypothesis="A person is moving."
-- JSQuAD (shunk031/JGLUE): Needle-in-a-haystack, e.g. Question="When did the capital move to Tokyo?" Answer="1868"
-- Synthetic Data (character counting): Count number of occurrences of "が" in "私は蝶が好きですが、蛾が嫌いです。"
-- Japanese Wikipedia Typo Dataset: Question="Identify all typos in ..." Answer="[Typo] -> [Correction]"
+- `n`: `30` samples per dataset/model/length multiplier
+- `seed`: `0`
+- `strategies`: `baseline`, `character`, `morphology`
+- `length_multipliers`: `1`, `5`, `10`
+- datasets:
+    - `JCommonsenseQA` (multiple choice)
+    - `JNLI` (natural language inference)
+    - `JSQuAD` (extraction)
+    - `JWTD` (typo correction)
+    - `CharCount` (synthetic character counting)
+- model configurations:
+    - `google/gemini-2.5-flash-lite:floor:none`
+    - `google/gemini-3-flash-preview:floor:none`
+    - `google/gemini-2.5-flash-lite:floor:high`
+    - `qwen/qwen3-8b:floor:none`
+    - `mistralai/mistral-small-3.2-24b-instruct:floor:none`
 
-## Related Papers
+## Reproducibility
 
-- "Inconsistent Tokenizations Cause Language Models to be Perplexed by Japanese Grammar"
+### Prerequisites
 
-## Other Variants
+- Python `>=3.12` (from `pyproject.toml`)
+- `uv`
+- API/env configuration from `.env.example`
 
-- Effects of "Forced De-Tokenization" on reasoning models
-    - Length of reasoning tokens
-    - Accuracy of final answer
-    - Compare against hybrid dynamic de-tokenization
-- Effects of "Forced De-Tokenization" on hallucination
-- When does Forced De-Tokenization start to degrade output
-    - Test on varying lengths of analysis target text.
+Required env keys:
+
+- `OPENAI_API_KEY`
+- `OPENAI_BASE_URL`
+
+Optional env keys:
+
+- `HF_TOKEN` (for higher rate limits)
+
+`OPENAI_API_KEY` + `OPENAI_BASE_URL` support OpenAI-compatible providers (for example OpenRouter and other compatible gateways).
+
+### Setup
+
+```bash
+uv sync
+cp .env.example .env
+# edit .env with your credentials
+```
+
+### Run the batch experiment
+
+```bash
+uv run python src/run/index.py
+```
+
+Result files are written to:
+
+- `data/results/<YYYYMMDD_HHMMSS>.json`
+
+## Current limitations
+
+- Small sample size per cell (`n=30`) can make small deltas unstable.
+- Task families differ in difficulty and score distributions, so global averages can hide subgroup effects.
+
+## Citation and Acknowledgements
+
+- Datasets: JGLUE subsets (`JCommonsenseQA`, `JNLI`, `JSQuAD`) and JWTD/CharCount task sources implemented in this repo.
+- Tooling: `fugashi` with `unidic-lite` for morphology-level tokenization.
