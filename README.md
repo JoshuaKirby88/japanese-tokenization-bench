@@ -2,6 +2,8 @@
 
 This repository studies how Japanese input tokenization style affects LLM task performance. I evaluate three tokenization strategies (`baseline`, `character`, `morphology`) across five datasets, five model configurations, and three `length_multiplier` settings. In the current canonical run, `morphology` is roughly accuracy-neutral/slightly positive overall versus `baseline`, while `character` is generally worse.
 
+![detokenization visualization](detokenization-visualization.svg)
+
 ## Methodology
 
 ### Task families and what they measure
