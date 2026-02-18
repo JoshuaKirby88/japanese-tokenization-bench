@@ -2,7 +2,7 @@
 
 This repository studies how Japanese input tokenization style affects LLM task performance. I evaluate three tokenization strategies (`baseline`, `character`, `morphology`) across five datasets, five model configurations, and three `length_multiplier` settings. In the current canonical run, `morphology` is roughly accuracy-neutral/slightly positive overall versus `baseline`, while `character` is generally worse.
 
-![detokenization visualization](detokenization-visualization.svg)
+![tokenization visualization](tokenization-visualization.svg)
 
 ## Methodology
 
@@ -16,12 +16,9 @@ This repository studies how Japanese input tokenization style affects LLM task p
 
 ### Strategy definitions
 
-- `baseline`: no forced detokenization.
-    - example: `猫が魚を食べた。`
-- `character`: split into character units.
-    - example: `猫 が 魚 を 食 べ た 。`
-- `morphology`: split by morphological tokens via `fugashi` (`-Owakati`).
-    - example (typical): `猫 が 魚 を 食べ た 。`
+- `baseline`: no forced tokenization.
+- `character`: split into character units by inserting spaces between characters.
+- `morphology`: split into morphological tokens via `fugashi` (`-Owakati`) by inserting spaces between tokens.
 
 See implementation in `src/tokenizer.py`.
 
@@ -53,7 +50,7 @@ The strategy effects in this run are small overall and should be treated as prel
 
 - Global `morphology` vs `baseline` is near-zero (`+0.08 pp`), while `character` is modestly negative (`-2.41 pp`).
 - This low sensitivity appears across heterogeneous model families (Gemini, Qwen, Mistral) with different tokenizer/vocabulary characteristics.
-- Despite major model differences in Japanese proficiency, scale, and cost tiers, detokenization strategy usually has a much smaller impact than model choice itself.
+- Despite major model differences in Japanese proficiency, scale, and cost tiers, tokenization strategy usually has a much smaller impact than model choice itself.
 
 ## Experiment Snapshot
 
@@ -100,6 +97,8 @@ uv sync
 cp .env.example .env
 # edit .env with your credentials
 ```
+
+Before running, edit `src/run/index.py` to configure experiments as needed (datasets, models, sample size, strategies, etc.).
 
 ### Run the batch experiment
 
